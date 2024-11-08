@@ -7,7 +7,7 @@
     <strong>ArtOfVM</strong>
     <p>A virtual machine written in Rust that hosts the best Assembly ever, ArtOfASM.</p>
     <p>
-    <img src="https://img.shields.io/badge/version-0.1-blue?style=for-the-badge" alt="version">
+    <img src="https://img.shields.io/badge/version-0.0.1-blue?style=for-the-badge" alt="version">
     <img src="https://img.shields.io/badge/platforms-Linux %7C Windows-blue?style=for-the-badge" alt="platforms">
     <img src="https://tokei.rs/b1/github/artofcoding212/ArtOfVM?category=code&style=for-the-badge" alt="lines">
     </p>
