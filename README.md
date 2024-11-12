@@ -7,7 +7,7 @@
     <strong>ArtOfVM</strong>
     <p>A virtual machine written in Rust that hosts the best Assembly ever, ArtOfASM.</p>
     <p>
-    <img src="https://img.shields.io/badge/version-0.0.1-blue?style=for-the-badge" alt="version">
+    <img src="https://img.shields.io/badge/version-0.0.2-blue?style=for-the-badge" alt="version">
     <img src="https://img.shields.io/badge/platforms-Linux %7C Windows-blue?style=for-the-badge" alt="platforms">
     <img src="https://tokei.rs/b1/github/artofcoding212/ArtOfVM?category=code&style=for-the-badge" alt="lines">
     </p>
@@ -30,28 +30,6 @@ Download the executable targeted towards your platform (Windows x86_64-msvc and 
 
 You can also download the repository and use the library in your Rust projects.
 
-### How does it work?
-**Virtual Machine (VM)**\
-The VM follows the below steps, which in theory sound quite simple, however it's a lot more complex to implement:
-* Decode the current instruction into a format that's easier to execute (see `Instruction` enum under src/vm.rs)
-* Execute the decoded instruction
-    * If the instruction is the halt instruction, break the loop
-* Increment the instruction pointer by 1
-* Repeat
-
-**Assembler**\
-The assembler for ArtOfASM, like the VM, also follows a set of steps until it reaches a certain point, which they are:
-* If the current character is at an end-of-file (ASCII 0b00000000)...
-    * Replace all of the bits and labels that are to be replaced with the corresponding label's bit position
-    * Break the loop
-* If the current character is a '.'...
-    * Advance past the '.' and the label name
-    * Store the label name in a `HashMap` as well as the bit position of the first instruction within the label
-    * Skip the following steps and start from the top
-* Otherwise, read the current operation code (opcode)
-    * If it's invalid, throw an exception
-* Assemble the current instruction based on the opcode
-* If the instruction requests to assemble a label...
-    * Increment the bit as if it pushed something to the machine code output
-    * Store the current bit and the label it wants to access in a `Vec`
-* Repeat
+### How can I learn ArtOfASM?
+As of now, ArtOfASM doesn't have any documentation. The best I have to offer are some examples I made under the [`tests`](https://github.com/artofcoding212/ArtOfVM/tree/master/tests) directory. If you want to get a more extensive education upon the language,
+go check out the assembler in [`src/assembler.rs`](https://github.com/artofcoding212/ArtOfVM/blob/master/src/assembler.rs).
