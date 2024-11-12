@@ -43,11 +43,11 @@ pub enum Opcode {
     XOR = 20,      // ^ [reg] [reg]
     SHR = 21,      // > [reg] [immed]
     SHL = 22,      // < [reg] [immed]
-    HSTORE = 23,   // str [addr] [immed]
-    HLOAD = 24,    // ld [addr]
-    HSTORER = 25,  // strR [addr] [reg]
-    HLOADR = 26,   // ldR [reg] [addr]
-}
+    HSTORE = 23,   // str [addr]
+    HSTORER = 24,  // strR [reg]
+    HLOAD = 25,    // ld [addr]
+    HLOADR = 26,   // ldR [reg]
+} 
 
 impl Assembler {
     pub fn new(src: String) -> Self {
@@ -67,14 +67,12 @@ impl Assembler {
             self.assemble_instr();
         }
 
-        println!("prev machine_c: {:?}", self.machine_c);
-
         for (i, name) in self.lbl_replaces.iter() {
             let bit = match self.lbls.get(name) {
                 Some(bit) => *bit,
                 _ => panic!("unknown label {name:?}"),
             };
-            println!("label {:?} starts @ bit {}, bit to replace: {}", name.clone(), bit.clone() as u8, i.clone());
+
             self.machine_c.insert((*i)-1, bit as u8);
         }
 
@@ -412,13 +410,16 @@ impl Assembler {
                 } as u8;
 
                 self.machine_c.push(addr);
-                
-                let immed = match self.immed() {
-                    Some(i) => i,
-                    _ => panic!("expected immed after addr after HSTORE instr"),
-                };
+            },
+            "strR" => {
+                self.machine_c.push(Opcode::HSTORER as u8);
 
-                self.psh_encoded_immed(immed);
+                let reg = match self.reg() {
+                    Some(r) => r,
+                    _ => panic!("expected a reg after HSTORES instr"),
+                } as u8;
+
+                self.machine_c.push(reg);
             },
             "ld" => {
                 self.machine_c.push(Opcode::HLOAD as u8);
@@ -430,23 +431,6 @@ impl Assembler {
 
                 self.machine_c.push(addr);
             },
-            "strR" => {
-                self.machine_c.push(Opcode::HSTORER as u8);
-
-                let addr = match self.addr() {
-                    Some(r) => r,
-                    _ => panic!("expected a addr after HSTORER instr"),
-                } as u8;
-
-                self.machine_c.push(addr);
-
-                let reg = match self.reg() {
-                    Some(r) => r,
-                    _ => panic!("expected a reg after addr after HSTORER instr"),
-                } as u8;
-
-                self.machine_c.push(reg);
-            },
             "ldR" => {
                 self.machine_c.push(Opcode::HLOADR as u8);
 
@@ -456,13 +440,6 @@ impl Assembler {
                 } as u8;
 
                 self.machine_c.push(reg);
-
-                let addr = match self.addr() {
-                    Some(r) => r,
-                    _ => panic!("expected a addr after reg after HLOADR instr"),
-                } as u8;
-
-                self.machine_c.push(addr);
             },
             _ => panic!("invalid opcode {opcode:?}"),
         };

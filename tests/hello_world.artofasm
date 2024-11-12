@@ -14,15 +14,21 @@ $ u32$108
 $ u32$101
 $ u32$72
 
-@ R1 u32$0
-// printstr
+str 0
+str 1
+str 2
+str 3
+str 4
+str 5
+str 6
+str 7
+str 8
+str 9
+str 10
+str 11
+str 12
+str 13
+str 14
 
-.printstr
-% R2
-= R1 R2
-/= end
-$$ R2
+$ u64$0
 int 0
-// printstr
-
-.end

@@ -1,4 +1,4 @@
-use std::mem;
+use std::{char, fs::{read_to_string, self}, mem};
 
 pub type Register = usize;
 pub type Address = usize;
@@ -44,10 +44,10 @@ pub enum Instruction {
     XOR(Register, Register),             // bitwise XOR on 2 regs, pushes result to stack
     SHR(Register, Immediate),            // shifts reg to the right by immediate, pushes result to stack
     SHL(Register, Immediate),            // shifts reg to the left by immediate, pushes result to stack
-    HSTORE(Address, Immediate),          // store immediate to heap at specific address from stack
+    HSTORE(Address),                     // store immediate from stack to heap at address
+    HSTORER(Register),                   // store immediate from stack to heap at address from register
     HLOAD(Address),                      // load immediate from heap and push to stack
-    HSTORER(Address, Register),          // store immediate to heap from register contents
-    HLOADR(Register, Address),           // load immediate from heap to register
+    HLOADR(Register),                    // load immediate from heap at address from register and push to stack
 }
 
 pub struct VirtualMachine {
@@ -67,7 +67,7 @@ impl VirtualMachine {
         Self {
             instr_ptr: 0,
             instr_mem,
-            virt_mem: vec![Immediate::U8(0); heap_max],
+            virt_mem: vec![Immediate::None(); heap_max],
             stack: vec![],
             reg: [Immediate::U8(0); 16],
 
@@ -267,19 +267,19 @@ impl VirtualMachine {
             23 => Instruction::HSTORE({
                 self.instr_ptr += 1;
                 self.instr_mem[self.instr_ptr] as Address
-            }, self.decode_immed()),
-            24 => Instruction::HLOAD({
+            }),
+            24 => Instruction::HSTORER({
+                self.instr_ptr += 1;
+                self.instr_mem[self.instr_ptr] as Register
+            }),
+            25 => Instruction::HLOAD({
                 self.instr_ptr += 1;
                 self.instr_mem[self.instr_ptr] as Address
             }),
-            25 => Instruction::HSTORER({
-                self.instr_ptr += 2;
-                self.instr_mem[self.instr_ptr-1] as Address
-            }, self.instr_mem[self.instr_ptr] as Register),
             26 => Instruction::HLOADR({
-                self.instr_ptr += 2;
-                self.instr_mem[self.instr_ptr-1] as Register
-            }, self.instr_mem[self.instr_ptr] as Address),
+                self.instr_ptr += 1;
+                self.instr_mem[self.instr_ptr] as Register
+            }),
             _ => Instruction::NOP(),
         }
     }
@@ -289,27 +289,324 @@ impl VirtualMachine {
             Instruction::NOP() => {},
             Instruction::HLT() => self.is_exe = false,
             Instruction::INT(i) => match i {
-                /* WRITE interrupt, takes unicode char
-                example:
+                /*
+                    WRITE interrupt
+                    params:
+                        start ptr to buf (u8/u16/u32/u64)
+                    desc:
+                        writes buf to stdout
+
+                example printing 'A':
+
                 push 65 ('A' in unicode)
+                str 0
+                push 0
                 int 0
                 */
-                0 => print!("{}", 
-                    match char::from_u32(
-                        match self.stack.pop() {
-                            Some(v) => match v {
-                                Immediate::U32(i) => {
-                                    i
-                                },
-                                _ => panic!("unciode char argument to WRITE interrupt must be u32"),      
-                            },
-                            _ => panic!("expected unicode char on stack when calling WRITE interrupt"),
-                        }
-                    ) {
-                        Some(c) => c,
-                        _ => panic!("invalid unicode char provided to WRITE interrupt"),
+                0 => {
+                    let mut buf = String::new();
+                    let mut addr: usize = match self.stack.pop() {
+                        Some(i) => match i {
+                            Immediate::U8(i) => i as usize,
+                            Immediate::U16(i) => i as usize,
+                            Immediate::U32(i) => i as usize,
+                            Immediate::U64(i) => i as usize,
+                            _ => panic!("valid addresses to WRITE interrupt are u8, u16, u32, & u64"),
+                        },
+                        _ => panic!("expected ptr to heap provided to WRITE interrupt"),
+                    };
+
+                    while self.virt_mem[addr] != Immediate::U32(0) {
+                        buf.push(match char::from_u32(
+                            match self.virt_mem[addr] {
+                                Immediate::U32(i) => i,
+                                _ => panic!("expected U32 as unicode char provided within message string for WRITE interrupt"),
+                            }
+                        ) {
+                            Some(c) => c,
+                            _ => panic!("invalid char provided within message string for WRITE interrupt"),
+                        });
+                        addr += 1;
                     }
-                ),
+
+                    print!("{buf}");
+                },
+                /* 
+                    HEAP_ALLOC interrupt
+                    params:
+                        requested alloc size (in immediates, as u8/u16/u32/u64)
+                    desc:
+                        zeroes out first available heap region & returns ptr to it,
+                        if no available heap regions were found, expands the heap with 0s and returns ptr to it
+                
+                example allocating string 'A':
+
+                push 0 ('\0' or null terminator in unicode)
+                push 65 ('A' in unicode)
+
+                push 2
+                int 1
+
+                pop R1
+                ldi R3 1
+                add R1 R3
+                pop R2
+
+                strR R1
+                strR R2
+                */
+                1 => {
+                    let to_alloc: usize = match self.stack.pop() {
+                        Some(i) => match i {
+                            Immediate::U8(i) => i as usize,
+                            Immediate::U16(i) => i as usize,
+                            Immediate::U32(i) => i as usize,
+                            Immediate::U64(i) => i as usize,
+                            _ => panic!("valid alloc size types to HEAP_ALLOC interrupt are u8, u16, u32, & u64"),
+                        },
+                        _ => panic!("expected alloc size provided to HEAP_ALLOC interrupt"),
+                    };
+
+                    let mut curr_free = 0;
+                    let mut ptr: Option<usize> = None;
+
+                    for (i, cell) in self.virt_mem.iter().enumerate() {
+                        if let Immediate::None() = cell {
+                            curr_free += 1;
+                            if curr_free >= to_alloc {
+                                ptr = Some(((i as isize - to_alloc as isize) + 1) as usize);
+                                break;
+                            }
+                        } else {
+                            curr_free = 0;
+                        }
+                    }
+
+                    if let None = ptr {
+                        let addr = self.virt_mem.len().clone()-1;
+
+                        for _ in 0..to_alloc {
+                            self.virt_mem.push(Immediate::U8(0));
+                        }
+
+                        self.stack.push(Immediate::U64(addr as u64));
+                        return;
+                    }
+
+                    let addr = ptr.unwrap();
+
+                    for i in addr..addr+to_alloc {
+                        self.virt_mem[i] = Immediate::U8(0);
+                    }
+
+                    self.stack.push(Immediate::U64(addr.clone() as u64));
+                },
+                /* 
+                    READ_FILE interrupt
+                    params:
+                        start ptr to file path (u8/u16/u32/u64)
+                    desc:
+                        pushes ptr to buffer in heap then a 1 if successful (1 would be at the top of the stack)
+                        pushes two 0s if unsucessful (err happened)
+                
+                example reading 'A.txt':
+
+                push 0 ('\0' or null terminator in unicode)
+                push 116 ('t' in unicode)
+                push 120 ('x' in unicode)
+                push 116 ('t' in unicode)
+                push 46 ('.' in unicode)
+                push 65 ('A' in unicode)
+
+                str 0
+                str 1
+                str 2
+                str 3
+                str 4
+                str 5
+
+                push 0
+                int 2
+                */
+                2 => {
+                    let mut path = String::new();
+                    let mut addr: usize = match self.stack.pop() {
+                        Some(i) => match i {
+                            Immediate::U8(i) => i as usize,
+                            Immediate::U16(i) => i as usize,
+                            Immediate::U32(i) => i as usize,
+                            Immediate::U64(i) => i as usize,
+                            _ => panic!("valid addresses to READ_FILE interrupt are u8, u16, u32, & u64"),
+                        },
+                        _ => panic!("expected ptr to heap provided to READ_FILE interrupt"),
+                    };
+
+                    while self.virt_mem[addr] != Immediate::U32(0) {
+                        path.push(match char::from_u32(
+                            match self.virt_mem[addr] {
+                                Immediate::U32(i) => i,
+                                _ => panic!("expected U32 as unicode char provided within file path string for READ_FILE interrupt"),
+                            }
+                        ) {
+                            Some(c) => c,
+                            _ => panic!("invalid char provided within file path string for READ_FILE interrupt"),
+                        });
+                        addr += 1;
+                    }
+
+                    match read_to_string(path) {
+                        Ok(s) => {
+                            let len = s.chars().count();
+                            self.stack.push(Immediate::U64(len as u64));
+
+                            self.execute(Instruction::INT(1));
+                            let buf_start = match self.stack.pop().unwrap() { Immediate::U64(addr) => addr as usize, _ => unreachable!() };
+
+                            for (i, ch) in s.chars().into_iter().enumerate() {
+                                self.virt_mem[buf_start+i] = Immediate::U32(ch as u32);
+                            }
+
+                            self.virt_mem[buf_start+len] = Immediate::U32(0);
+                            self.stack.extend_from_slice(&[Immediate::U64(buf_start as u64), Immediate::U8(1)]);
+                        },
+                        _ => self.stack.extend_from_slice(&[Immediate::U64(0), Immediate::U8(0)]),
+                    }
+                },
+                /* 
+                    WRITE_FILE interrupt
+                    params:
+                        start ptr to buf (u8/u16/u32/u64) (first arg)
+                        start ptr to file path (u8/u16/u32/u64)
+                    desc:
+                        attempts to write to file or create file if nonexistant with buf, pushes 0 if err, 1 if success
+                
+                example writing 'A' to 'A.txt':
+
+                push 0 ('\0' or null terminator in unicode)
+                push 116 ('t' in unicode)
+                push 120 ('x' in unicode)
+                push 116 ('t' in unicode)
+                push 46 ('.' in unicode)
+                push 65 ('A' in unicode)
+                str 0
+                str 1
+                str 2
+                str 3
+                str 4
+                str 5
+
+                push 0 ('\0' or null terminator in unicode)
+                push 65 ('A' in unicode)
+                str 6
+                str 7
+
+                push 0
+                push 6
+                int 3
+                */
+                3 => {
+                    let mut buf = String::new();
+                    let mut buf_addr: usize = match self.stack.pop() {
+                        Some(i) => match i {
+                            Immediate::U8(i) => i as usize,
+                            Immediate::U16(i) => i as usize,
+                            Immediate::U32(i) => i as usize,
+                            Immediate::U64(i) => i as usize,
+                            _ => panic!("valid addresses to WRITE_FILE interrupt are u8, u16, u32, & u64"),
+                        },
+                        _ => panic!("expected ptr to heap provided to WRITE_FILE interrupt"),
+                    };
+
+                    while self.virt_mem[buf_addr] != Immediate::U32(0) {
+                        buf.push(match char::from_u32(
+                            match self.virt_mem[buf_addr] {
+                                Immediate::U32(i) => i,
+                                _ => panic!("expected U32 as unicode char provided within buffer string for WRITE_FILE interrupt"),
+                            }
+                        ) {
+                            Some(c) => c,
+                            _ => panic!("invalid char provided within buffer string for WRITE_FILE interrupt"),
+                        });
+                        buf_addr += 1;
+                    }
+
+                    let mut path = String::new();
+                    let mut path_addr: usize = match self.stack.pop() {
+                        Some(i) => match i {
+                            Immediate::U8(i) => i as usize,
+                            Immediate::U16(i) => i as usize,
+                            Immediate::U32(i) => i as usize,
+                            Immediate::U64(i) => i as usize,
+                            _ => panic!("valid addresses to WRITE_FILE interrupt are u8, u16, u32, & u64"),
+                        },
+                        _ => panic!("expected ptr to heap provided to WRITE_FILE interrupt"),
+                    };
+
+                    while self.virt_mem[path_addr] != Immediate::U32(0) {
+                        path.push(match char::from_u32(
+                            match self.virt_mem[path_addr] {
+                                Immediate::U32(i) => i,
+                                _ => panic!("expected U32 as unicode char provided within path string for WRITE_FILE interrupt"),
+                            }
+                        ) {
+                            Some(c) => c,
+                            _ => panic!("invalid char provided within path string for WRITE_FILE interrupt"),
+                        });
+                        path_addr += 1;
+                    }
+
+                    match fs::write(path, buf) {
+                        Ok(_) => self.stack.push(Immediate::U8(1)),
+                        _ => self.stack.push(Immediate::U8(0)),
+                    }
+                },
+                /* 
+                    PANIC interrupt
+                    params:
+                        start ptr to panic message (u64)
+                    desc:
+                        prints out panic message to stderr then exits with error code 1
+                
+                    example panicking with 'A':
+
+                    push 0 ('\0' or null terminator in unicode)
+                    push 65 ('A' in unicode)
+                    
+                    str 0
+                    str 1
+
+                    push 0
+                    int 4
+                */
+                4 => {
+                    let mut buf = String::new();
+                    let mut addr: usize = match self.stack.pop() {
+                        Some(i) => match i {
+                            Immediate::U8(i) => i as usize,
+                            Immediate::U16(i) => i as usize,
+                            Immediate::U32(i) => i as usize,
+                            Immediate::U64(i) => i as usize,
+                            _ => panic!("valid addresses to PANIC interrupt are u8, u16, u32, & u64"),
+                        },
+                        _ => panic!("expected ptr to heap provided to PANIC interrupt"),
+                    };
+
+                    while self.virt_mem[addr] != Immediate::U32(0) {
+                        buf.push(match char::from_u32(
+                            match self.virt_mem[addr] {
+                                Immediate::U32(i) => i,
+                                _ => panic!("expected U32 as unicode char provided within message string for PANIC interrupt"),
+                            }
+                        ) {
+                            Some(c) => c,
+                            _ => panic!("invalid char provided within message string for PANIC interrupt"),
+                        });
+                        addr += 1;
+                    }
+
+                    eprintln!("panicked with err message:\n{buf}");
+                    std::process::exit(1);
+                },
                 _ => panic!("unknown interrupt '{i}'"),
             },
             Instruction::PUSH(immed) => {
@@ -453,10 +750,28 @@ impl VirtualMachine {
                 (Immediate::U64(a), Immediate::U64(b)) => self.stack.push(Immediate::U64(a<<b)),
                 _ => panic!("can only left shift if reg and immed are of the same type of value"),
             },
-            Instruction::HSTORE(addr, immed) => self.virt_mem[addr] = immed,
+            Instruction::HSTORE(addr) => self.virt_mem[addr] = match self.stack.pop() {
+                Some(i) => i,
+                _ => panic!("expected value on stack for HSTORE instruction"),
+            },
+            Instruction::HSTORER(reg) => self.virt_mem[match self.reg[reg] {
+                Immediate::U8(i) => i as usize,
+                Immediate::U16(i) => i as usize,
+                Immediate::U32(i) => i as usize,
+                Immediate::U64(i) => i as usize,
+                _ => panic!("valid addresses to HSTORER are u8, u16, u32, & u64"),
+            }] = match self.stack.pop() {
+                Some(i) => i,
+                _ => panic!("expected value on stack for HSTORER instruction"),
+            },
             Instruction::HLOAD(addr) => self.stack.push(self.virt_mem[addr]),
-            Instruction::HSTORER(addr, reg) => self.virt_mem[addr] = self.reg[reg],
-            Instruction::HLOADR(addr, reg) => self.reg[reg] = self.virt_mem[addr],
+            Instruction::HLOADR(reg) => self.stack.push(self.virt_mem[match self.reg[reg] {
+                Immediate::U8(i) => i as usize,
+                Immediate::U16(i) => i as usize,
+                Immediate::U32(i) => i as usize,
+                Immediate::U64(i) => i as usize,
+                _ => panic!("valid addresses to HLOADR are u8, u16, u32, & u64"),
+            }]),
         }
     }
 }

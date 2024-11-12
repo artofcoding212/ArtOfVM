@@ -1,0 +1,167 @@
+$ u32$0
+$ u32$116
+$ u32$120
+$ u32$116
+$ u32$46
+$ u32$116
+$ u32$115
+$ u32$101
+$ u32$116
+$ u32$95
+$ u32$115
+$ u32$102
+$ u32$47
+$ u32$115
+$ u32$116
+$ u32$115
+$ u32$101
+$ u32$116
+str 0
+str 1
+str 2
+str 3
+str 4
+str 5
+str 6
+str 7
+str 8
+str 9
+str 10
+str 11
+str 12
+str 13
+str 14
+str 15
+str 16
+str 17
+
+$ u32$0
+$ u32$101
+$ u32$108
+$ u32$105
+$ u32$102
+$ u32$32
+$ u32$103
+$ u32$110
+$ u32$105
+$ u32$100
+$ u32$97
+$ u32$101
+$ u32$114
+$ u32$32
+$ u32$114
+$ u32$114
+$ u32$101
+str 18
+str 19
+str 20
+str 21
+str 22
+str 23
+str 24
+str 25
+str 26
+str 27
+str 28
+str 29
+str 30
+str 31
+str 32
+str 33
+str 34
+
+$ u32$0
+$ u32$101
+$ u32$108
+$ u32$105
+$ u32$102
+$ u32$32
+$ u32$111
+$ u32$116
+$ u32$32
+$ u32$103
+$ u32$110
+$ u32$105
+$ u32$116
+$ u32$105
+$ u32$114
+$ u32$119
+$ u32$32
+$ u32$114
+$ u32$114
+$ u32$101
+str 35
+str 36
+str 37
+str 38
+str 39
+str 40
+str 41
+str 42
+str 43
+str 44
+str 45
+str 46
+str 47
+str 48
+str 49
+str 50
+str 51
+str 52
+str 53
+str 54
+
+$ u32$0
+$ u32$33
+$ u32$100
+$ u32$108
+$ u32$114
+$ u32$111
+$ u32$119
+$ u32$32
+$ u32$44
+$ u32$111
+$ u32$108
+$ u32$108
+$ u32$101
+$ u32$72
+str 55
+str 56
+str 57
+str 58
+str 59
+str 60
+str 61
+str 62
+str 63
+str 64
+str 65
+str 66
+str 67
+str 68
+
+$ u32$0
+$ u32$55
+int 3
+% R1
+@ R2 u8$0
+= R1 R2
+/= write_file_err
+$ u32$0
+
+int 2
+% R1
+= R1 R2
+/= read_file_err
+int 0
+hlt
+
+.write_file_err
+    $ u64$35
+    int 4
+    hlt
+
+.read_file_err
+    $ u64$18
+    int 4
+    hlt

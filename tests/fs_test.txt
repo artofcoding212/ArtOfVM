@@ -1,0 +1,4 @@
+When executing the "fs_test.out" file with the VM, this file should contain the contents of "Hello, world!" (this has been tested).
+
+Feel free to take a peek at the "fs_test.artofasm" source code to see how it works. Most of it really is just allocating memory on the 
+heap, the 167 lines may look intimidating, but in reality, only a dozen or so lines of code actually go into achieving this.
